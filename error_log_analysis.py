@@ -37,14 +37,15 @@ class ErrorLogAnalyzer:
 
         #error type mapping
         self.error_types = {
-            "SyntaxError": "syntax",
-            "IndexError": "runtime",
+            "SyntaxError": "syntax",        "IndexError": "runtime",
             "NameError": "runtime",
             "TypeError": "runtime",
             "NullPointerException": "runtime",
             "SemanticError": "semantic",
             "LogicError": "logical"
-        }    def extract_entities(self, log_text: str) -> Dict[str, Optional[str]]:
+        }
+    
+    def extract_entities(self, log_text: str) -> Dict[str, Optional[str]]:
 
         if not log_text or not isinstance(log_text, str):
             return {"error_type": None, "line_number": None, "variables": [], "message": None}

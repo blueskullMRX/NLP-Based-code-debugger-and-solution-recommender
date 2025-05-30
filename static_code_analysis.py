@@ -156,7 +156,7 @@ class StaticCodeAnalyzer:
                 if re.search(pattern, code_snippet, re.IGNORECASE):
                     intent.add(intent_type)
         return list(intent)
-
+    
     def analyze(self, code_snippet: str, error_data: Dict[str, Optional[str]]) -> Dict[str, Optional[any]]:
         """
         Analyzes code to identify error locations and programmer intent.
@@ -166,7 +166,7 @@ class StaticCodeAnalyzer:
             error_data (dict): Error data from error_log_analysis.
 
         Returns:
-            dict: Analysis results with language, error location, and intent.
+            dict: Analysis results with language, error location, intent, and extracted variables.
         """
         # Detect language using Stage 2 module
         language = self.language_detector.detect_language(code_snippet)
@@ -176,7 +176,8 @@ class StaticCodeAnalyzer:
         result = {
             "language": language,
             "error_location": {"node_type": None, "node_text": None, "start_line": None, "end_line": None},
-            "intent": []
+            "intent": [],
+            "code_variables": []  # Variables extracted from the actual code
         }
 
         if language not in ['Python', 'Java', 'C++']:
@@ -189,10 +190,135 @@ class StaticCodeAnalyzer:
         else:
             result["error_location"] = self.find_error_location_non_python(code_snippet, language, error_data.get("line_number"), code_lines)
 
+        # Extract variables from the problematic code line if we found it
+        error_line = result["error_location"].get("node_text")
+        if error_line:
+            result["code_variables"] = self.extract_variables_from_code_line(error_line, language)
+        
+        # If we didn't find variables from the error line, try extracting from the entire snippet
+        if not result["code_variables"]:
+            # Extract variables from the line number mentioned in error_data
+            line_num = error_data.get("line_number")
+            if line_num and line_num.isdigit():
+                line_idx = int(line_num) - 1
+                if 0 <= line_idx < len(code_lines):
+                    result["code_variables"] = self.extract_variables_from_code_line(code_lines[line_idx], language)
+
         # Infer intent
         result["intent"] = self.infer_intent(code_snippet, language)
 
         return result
+
+    def extract_variables_from_code_line(self, code_line: str, language: str) -> List[str]:
+        """
+        Extract variable names from a specific code line.
+        
+        Args:
+            code_line (str): The code line to analyze
+            language (str): Programming language
+            
+        Returns:
+            List[str]: List of variable names found in the code line        """
+        variables = []
+        
+        if language == 'Python':
+            # Extract Python variables using regex patterns
+            # Variable assignments: var = value
+            assignments = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=', code_line)
+            variables.extend(assignments)
+            
+            # Array/list access: var[index] or var.method()
+            array_access = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[\[\.]', code_line)
+            variables.extend(array_access)
+            
+            # Variables inside brackets: array[variable]
+            bracket_vars = re.findall(r'\[([a-zA-Z_][a-zA-Z0-9_]*)\]', code_line)
+            variables.extend(bracket_vars)
+            
+            # Function calls with variables: func(var1, var2)
+            func_args = re.findall(r'\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[,\)]', code_line)
+            variables.extend(func_args)
+            
+            # Multiple function arguments: func(var1, var2, var3)
+            func_multi_args = re.findall(r',\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*[,\)]', code_line)
+            variables.extend(func_multi_args)
+            
+            # Variables in expressions: var + other, var - other, var * other
+            expr_vars = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[+\-*/]', code_line)
+            variables.extend(expr_vars)
+              # Variables after operators: + var, - var, * var
+            post_op_vars = re.findall(r'[+\-*/]\s*([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(post_op_vars)
+            
+        elif language == 'Java':
+            # Java variable patterns
+            # Object method calls: obj.method()
+            obj_calls = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\.', code_line)
+            variables.extend(obj_calls)
+            
+            # Array access: array[index]
+            array_access = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[', code_line)
+            variables.extend(array_access)
+            
+            # Variables inside brackets: array[variable]
+            bracket_vars = re.findall(r'\[([a-zA-Z_][a-zA-Z0-9_]*)\]', code_line)
+            variables.extend(bracket_vars)
+            
+            # Variable declarations: Type var = value
+            declarations = re.findall(r'\b(?:int|String|double|float|boolean|char|Object|List|ArrayList)\s+([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(declarations)
+            
+            # Variable assignments: var = value
+            assignments = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=', code_line)
+            variables.extend(assignments)
+            
+            # Variables in expressions: var * other, var + other
+            expr_vars = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[+\-*/]', code_line)
+            variables.extend(expr_vars)
+              # Variables after operators: * var, + var
+            post_op_vars = re.findall(r'[+\-*/]\s*([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(post_op_vars)
+            
+        elif language == 'C++':
+            # C++ variable patterns
+            # Vector access: vec[index] or vec.at(index)
+            vector_access = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[\[\.]', code_line)
+            variables.extend(vector_access)
+            
+            # Variables inside brackets: vector[variable]
+            bracket_vars = re.findall(r'\[([a-zA-Z_][a-zA-Z0-9_]*)\]', code_line)
+            variables.extend(bracket_vars)
+            
+            # Pointer dereferencing: *ptr
+            pointer_deref = re.findall(r'\*\s*([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(pointer_deref)
+            
+            # Variable declarations: type var = value
+            declarations = re.findall(r'\b(?:int|double|float|char|std::string|std::vector)\s*<?[^>]*>?\s+([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(declarations)
+            
+            # Variable assignments: var = value
+            assignments = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=', code_line)
+            variables.extend(assignments)
+            
+            # Variables in expressions: var + other, var * other
+            expr_vars = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[+\-*/]', code_line)
+            variables.extend(expr_vars)
+            
+            # Variables after operators: + var, * var
+            post_op_vars = re.findall(r'[+\-*/]\s*([a-zA-Z_][a-zA-Z0-9_]*)', code_line)
+            variables.extend(post_op_vars)
+        
+        # Remove duplicates and filter valid identifiers
+        filtered_vars = []
+        exclude_words = {'if', 'else', 'for', 'while', 'class', 'def', 'function', 'return', 'print', 'console', 'std', 'cout', 'cin', 'endl', 'System', 'out', 'println', 'public', 'private', 'static', 'void', 'main', 'args', 'new', 'delete', 'include', 'using', 'namespace'}
+        
+        for var in variables:
+            if var and var.lower() not in exclude_words and var.isidentifier() and len(var) > 1:
+                if var not in filtered_vars:
+                    filtered_vars.append(var)
+                    
+        return filtered_vars
 
 # Example usage
 if __name__ == "__main__":
