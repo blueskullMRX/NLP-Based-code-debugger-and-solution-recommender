@@ -44,9 +44,7 @@ class ErrorLogAnalyzer:
             "NullPointerException": "runtime",
             "SemanticError": "semantic",
             "LogicError": "logical"
-        }
-
-    def extract_entities(self, log_text: str) -> Dict[str, Optional[str]]:
+        }    def extract_entities(self, log_text: str) -> Dict[str, Optional[str]]:
 
         if not log_text or not isinstance(log_text, str):
             return {"error_type": None, "line_number": None, "variables": [], "message": None}
@@ -61,12 +59,40 @@ class ErrorLogAnalyzer:
         entities["line_number"] = line_number_match.group(1) or line_number_match.group(2) if line_number_match else None
         entities["message"] = log_text.strip()
 
-        #extract variable names
-        for token in doc:
-            if token.pos_ == "NOUN" or token.pos_ == "PROPN":
-                if token.text.isidentifier():
-                    entities["variables"].append(token.text)
-
+        # Extract variable names using better patterns
+        variables = []
+        
+        # Pattern 1: Variables in quotes (name 'variable' is not defined)
+        quoted_vars = re.findall(r"'([a-zA-Z_][a-zA-Z0-9_]*)'", log_text)
+        variables.extend(quoted_vars)
+        
+        # Pattern 2: Variables after specific keywords
+        name_errors = re.findall(r"name\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+is\s+not\s+defined", log_text, re.IGNORECASE)
+        variables.extend(name_errors)
+        
+        # Pattern 3: Object names in null pointer exceptions
+        null_objects = re.findall(r"Cannot\s+invoke\s+.*\s+on\s+null\s+object\s+([a-zA-Z_][a-zA-Z0-9_]*)", log_text, re.IGNORECASE)
+        variables.extend(null_objects)
+        
+        # Pattern 4: Array/list names in index errors
+        index_vars = re.findall(r"index\s+out\s+of\s+(?:range|bounds).*?([a-zA-Z_][a-zA-Z0-9_]*)", log_text, re.IGNORECASE)
+        variables.extend(index_vars)
+        
+        # Pattern 5: Variables mentioned in type errors between quotes or in context
+        type_vars = re.findall(r"'([a-zA-Z_][a-zA-Z0-9_]*)'.*?and.*?'([a-zA-Z_][a-zA-Z0-9_]*)'", log_text)
+        for var_tuple in type_vars:
+            variables.extend(var_tuple)
+            
+        # Remove duplicates and filter out common error keywords
+        filtered_vars = []
+        exclude_words = {'error', 'exception', 'line', 'at', 'in', 'on', 'is', 'not', 'defined', 'null', 'object', 'method', 'cannot', 'invoke', 'range', 'bounds', 'index', 'out', 'of', 'type', 'for', 'and', 'str', 'int', 'float', 'list', 'dict'}
+        
+        for var in variables:
+            if var and var.lower() not in exclude_words and var.isidentifier() and len(var) > 1:
+                if var not in filtered_vars:
+                    filtered_vars.append(var)
+        
+        entities["variables"] = filtered_vars
         return entities
 
     def classify_error(self, log_text: str) -> str:
