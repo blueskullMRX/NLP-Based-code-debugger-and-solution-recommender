@@ -19,7 +19,8 @@ class InputHandler:
     """
     
     def __init__(self):
-        """Initialize the input handler with supported file types and configurations."""        self.supported_code_extensions = {
+        """Initialize the input handler with supported file types and configurations."""
+        self.supported_code_extensions = {
             '.py': 'Python',
             '.java': 'Java', 
             '.cpp': 'C++',
@@ -54,9 +55,7 @@ class InputHandler:
         }
         
         self.max_file_size = 10 * 1024 * 1024  # 10MB limit
-        self.max_line_length = 10000  # Maximum characters per line
-
-    def detect_input_type(self, input_data: str) -> str:
+        self.max_line_length = 10000  # Maximum characters per line    def detect_input_type(self, input_data: str) -> str:
         """Detect whether input is code, error log, or mixed content"""
         input_lower = input_data.lower().strip()
         

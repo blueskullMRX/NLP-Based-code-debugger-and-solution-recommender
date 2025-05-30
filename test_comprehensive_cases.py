@@ -3,11 +3,11 @@
 Comprehensive test comparing different recommendation approaches
 """
 
-from enhanced_recommendation_engine import EnhancedRecommendationEngine
+from improved_recommendation_engine import ImprovedRecommendationEngine
 
 def test_comprehensive_cases():
     print("=== COMPREHENSIVE RECOMMENDATION ENGINE TESTING ===\n")
-    engine = EnhancedRecommendationEngine()
+    engine = ImprovedRecommendationEngine()
     
     test_cases = [
         {
