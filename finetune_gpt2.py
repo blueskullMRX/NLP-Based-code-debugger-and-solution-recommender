@@ -2,48 +2,29 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel, Trainer, TrainingArgume
 from datasets import Dataset
 import json
 import torch
+import os
 
-# Generate synthetic dataset
+# Check if we have a pre-trained model and continue training from there
+def get_model_path():
+    """
+    Determine which model to use: existing fine-tuned or base GPT-2
+    """
+    finetuned_path = "./gpt2_finetuned"
+    if os.path.exists(finetuned_path) and os.path.exists(os.path.join(finetuned_path, "config.json")):
+        print(f"Found existing fine-tuned model at {finetuned_path}")
+        return finetuned_path
+    else:
+        print("No existing fine-tuned model found, starting from base GPT-2")
+        return "gpt2"
+
+# This function is kept for backward compatibility but is no longer used
+# The training now uses the comprehensive data from synthetic_dataset.jsonl
 def generate_synthetic_dataset():
     """
-    Creates a synthetic dataset of error-code-fix pairs for Python, Java, and C++.
+    Legacy function - now we use the comprehensive JSONL file directly
     """
-    dataset = []
-    
-    # Python: IndexError
-    dataset.append({
-        "text": "Prompt: Fix a Python error.\nError: IndexError at line 3\nMessage: list index out of range\nCode line: print(items[i])\nVariables: items\nIntent: loop, function\nCompletion: Corrected Code:\n```python\nfor i in range(len(items)):\n    print(items[i])\n```\nExplanation: The IndexError occurs because the index 'i' exceeds the list length. Using len(items) ensures valid indices.\nBest Practice: Check list bounds or use try-except."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a Python error.\nError: IndexError at line 5\nMessage: list index out of range\nCode line: value = array[i]\nVariables: array\nIntent: loop\nCompletion: Corrected Code:\n```python\ntry:\n    value = array[i]\nexcept IndexError:\n    value = None\n```\nExplanation: The IndexError is due to an invalid index. A try-except block handles the error gracefully.\nBest Practice: Use try-except for error-prone operations."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a Python error.\nError: IndexError at line 4\nMessage: list index out of range\nCode line: result = data[i]\nVariables: data\nIntent: function\nCompletion: Corrected Code:\n```python\nif i < len(data):\n    result = data[i]\n```\nExplanation: The IndexError occurs due to an out-of-bounds index. Checking the length prevents the error.\nBest Practice: Validate indices before accessing lists."
-    })
-    
-    # Java: NullPointerException
-    dataset.append({
-        "text": "Prompt: Fix a Java error.\nError: NullPointerException at line 4\nMessage: Cannot invoke method on null object\nCode line: System.out.println(s.length());\nVariables: s\nIntent: function, class\nCompletion: Corrected Code:\n```java\nif (s != null) {\n    System.out.println(s.length());\n}\n```\nExplanation: The NullPointerException occurs because 's' is null. Checking for null prevents the error.\nBest Practice: Use null checks or Optional."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a Java error.\nError: NullPointerException at line 6\nMessage: null object\nCode line: obj.method();\nVariables: obj\nIntent: function\nCompletion: Corrected Code:\n```java\nobj = new Object(); // Initialize\nobj.method();\n```\nExplanation: The NullPointerException occurs due to an uninitialized object. Initializing 'obj' fixes it.\nBest Practice: Initialize objects at declaration."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a Java error.\nError: NullPointerException at line 5\nMessage: null reference\nCode line: str.toUpperCase();\nVariables: str\nIntent: method\nCompletion: Corrected Code:\n```java\nstr = str != null ? str.toUpperCase() : \"\";\n```\nExplanation: The NullPointerException occurs because 'str' is null. Using a ternary operator ensures safety.\nBest Practice: Use null-safe operations."
-    })
-    
-    # C++: out_of_range
-    dataset.append({
-        "text": "Prompt: Fix a C++ error.\nError: out_of_range at line 4\nMessage: vector index exceeds size\nCode line: int x = vec[10];\nVariables: vec\nIntent: function\nCompletion: Corrected Code:\n```cpp\nif (10 < vec.size()) {\n    int x = vec[10];\n}\n```\nExplanation: The out_of_range error occurs because the index exceeds the vector size. Checking the size prevents the error.\nBest Practice: Use at() for bounds checking."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a C++ error.\nError: out_of_range at line 5\nMessage: invalid vector index\nCode line: value = vector[5];\nVariables: vector\nIntent: function\nCompletion: Corrected Code:\n```cpp\nvalue = vector.at(5);\n```\nExplanation: The out_of_range error is due to an invalid index. Using at() provides bounds checking.\nBest Practice: Prefer at() over [] for safety."
-    })
-    dataset.append({
-        "text": "Prompt: Fix a C++ error.\nError: out_of_range at line 6\nMessage: vector access out of bounds\nCode line: result = arr[8];\nVariables: arr\nIntent: loop\nCompletion: Corrected Code:\n```cpp\nresult = arr.at(8);\n```\nExplanation: The out_of_range error occurs due to an invalid index. The at() method checks bounds automatically.\nBest Practice: Use at() for safe vector access."
-    })
-    
-    return dataset
+    print("Warning: This function is deprecated. Using synthetic_dataset.jsonl instead.")
+    return []
 
 # Save dataset to JSONL
 def save_dataset(dataset, filename="synthetic_dataset.jsonl"):
@@ -66,19 +47,38 @@ def load_dataset(filename="synthetic_dataset.jsonl"):
     return Dataset.from_dict({"text": [item["text"] for item in data]})
 
 # Fine-tune GPT-2
-def finetune_model():
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    model = GPT2LMHeadModel.from_pretrained("gpt2")
+def finetune_model(epochs=3, batch_size=1, learning_rate=5e-5, use_existing_data=True):
+    """
+    Fine-tune GPT-2 model using existing JSON data or generated synthetic data
+    
+    Args:
+        epochs (int): Number of training epochs
+        batch_size (int): Training batch size
+        learning_rate (float): Learning rate for training
+        use_existing_data (bool): Whether to use existing JSON file or generate new data
+    """
+    # Determine model path (existing fine-tuned or base GPT-2)
+    model_path = get_model_path()
+    
+    # Load tokenizer and model
+    tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+    model = GPT2LMHeadModel.from_pretrained(model_path)
     
     # Add padding token
     tokenizer.pad_token = tokenizer.eos_token
     
-    # Generate and save dataset
-    dataset = generate_synthetic_dataset()
-    save_dataset(dataset)
-    
     # Load dataset
-    dataset = load_dataset()
+    if use_existing_data:
+        print("Loading existing dataset from synthetic_dataset.jsonl")
+        dataset = load_dataset()
+    else:
+        print("Generating new synthetic dataset")
+        # Generate and save dataset
+        synthetic_data = generate_synthetic_dataset()
+        save_dataset(synthetic_data)
+        dataset = load_dataset()
+    
+    print(f"Dataset size: {len(dataset)}")
     
     # Tokenize dataset
     def tokenize_function(examples):
@@ -86,7 +86,7 @@ def finetune_model():
             examples["text"],
             padding="max_length",
             truncation=True,
-            max_length=384,  # Combined prompt + completion
+            max_length=512,  # Increased for longer examples
             return_tensors="pt"
         )
     
@@ -97,15 +97,20 @@ def finetune_model():
     # Data collator
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     
-    # Training arguments
+    # Training arguments with better configuration
     training_args = TrainingArguments(
         output_dir="./gpt2_finetuned",
-        num_train_epochs=5,
-        per_device_train_batch_size=1,
-        save_steps=500,
-        save_total_limit=1,
-        logging_steps=50,
-        learning_rate=5e-5,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        save_steps=max(50, len(dataset) // 4),  # Save more frequently for smaller datasets
+        save_total_limit=2,  # Keep last 2 checkpoints
+        logging_steps=10,
+        learning_rate=learning_rate,
+        warmup_steps=min(100, len(dataset) // 10),  # Warmup for better convergence
+        logging_dir='./logs',
+        eval_steps=None,  # No evaluation for now
+        load_best_model_at_end=False,
+        report_to=None,  # Disable wandb/tensorboard logging
     )
     
     # Trainer
@@ -116,12 +121,49 @@ def finetune_model():
         data_collator=data_collator,
     )
     
-    # Fine-tune
-    trainer.train()
+    # Check if we're continuing from a checkpoint
+    checkpoint_dir = None
+    if model_path == "./gpt2_finetuned":
+        # Look for the latest checkpoint
+        checkpoint_dirs = [d for d in os.listdir("./gpt2_finetuned") if d.startswith("checkpoint-")]
+        if checkpoint_dirs:
+            latest_checkpoint = max(checkpoint_dirs, key=lambda x: int(x.split("-")[1]))
+            checkpoint_dir = os.path.join("./gpt2_finetuned", latest_checkpoint)
+            print(f"Resuming training from checkpoint: {checkpoint_dir}")
     
-    # Save model
+    # Fine-tune
+    print(f"Starting training for {epochs} epochs...")
+    if checkpoint_dir and os.path.exists(checkpoint_dir):
+        trainer.train(resume_from_checkpoint=checkpoint_dir)
+    else:
+        trainer.train()
+    
+    # Save final model
+    print("Saving final model...")
     model.save_pretrained("./gpt2_finetuned")
     tokenizer.save_pretrained("./gpt2_finetuned")
+    
+    print("Training completed successfully!")
+    return model, tokenizer
 
 if __name__ == "__main__":
-    finetune_model()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Fine-tune GPT-2 for code debugging')
+    parser.add_argument('--epochs', type=int, default=3, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=1, help='Training batch size')
+    parser.add_argument('--learning_rate', type=float, default=5e-5, help='Learning rate')
+    parser.add_argument('--generate_new', action='store_true', help='Generate new synthetic data instead of using existing')
+    
+    args = parser.parse_args()
+    
+    # Run fine-tuning
+    model, tokenizer = finetune_model(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        use_existing_data=not args.generate_new
+    )
+    
+    print(f"\nModel fine-tuned with {args.epochs} epochs")
+    print("You can now use the fine-tuned model in recommendation_engine.py")
